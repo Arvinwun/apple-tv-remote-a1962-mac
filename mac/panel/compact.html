@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Siri Remote</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#fff; --ink:#16181d; --muted:#8a8f99; --line:#eceef1;
+    --accent:#ff6a00; --ok:#12b76a; --warn:#f79009; --soft:#eef0f3;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0; height:100%}
+  body{
+    display:flex; flex-direction:column; height:100%;
+    background:var(--bg); color:var(--ink); padding:12px 14px 12px;
+    font:13px/1.45 -apple-system,BlinkMacSystemFont,"PingFang SC",sans-serif;
+    -webkit-font-smoothing:antialiased; user-select:none; overflow:hidden;
+  }
+  /* ---------- 顶部 ---------- */
+  .head{display:flex; align-items:center; justify-content:space-between; margin-bottom:9px; padding:0 2px; flex:none}
+  .title{font-size:13.5px; font-weight:600; letter-spacing:.2px}
+  .state{display:flex; align-items:center; gap:6px; font-size:11.5px; color:var(--muted)}
+  .dot{width:6px; height:6px; border-radius:50%; background:var(--muted); transition:.2s}
+  .dot.ok{background:var(--ok)}
+  .dot.warn{background:var(--warn)}
+  .banner{
+    display:none; align-items:center; gap:8px; margin-bottom:9px; padding:8px 10px; flex:none;
+    background:#fff4e5; border:1px solid #ffd7a8; border-radius:11px; font-size:11.5px; color:#8a4b00;
+  }
+  .banner.show{display:flex}
+  .banner a{margin-left:auto; color:var(--accent); font-weight:600; text-decoration:none; white-space:nowrap}
+  /* ---------- 页签 ---------- */
+  .tabs{display:flex; gap:3px; background:#e8eaee; padding:3px; border-radius:10px; margin-bottom:10px; flex:none}
+  .tab{flex:1; text-align:center; padding:5px 0; font-size:12px; border-radius:8px; cursor:pointer; color:#6f747d; transition:.15s}
+  .tab.on{background:#fff; color:var(--ink); font-weight:600; box-shadow:0 1px 2px rgba(16,24,40,.08)}
+  /* ---------- 内容区 ---------- */
+  .bodywrap{position:relative; flex:1; min-height:0}
+  .bodywrap::after{
+    content:""; position:absolute; left:0; right:0; bottom:0; height:16px; pointer-events:none;
+    background:linear-gradient(rgba(244,245,247,0), var(--bg)); opacity:0; transition:.2s;
+  }
+  .bodywrap.more::after{opacity:1}
+  .body{height:100%; overflow-y:auto; overflow-x:hidden; margin:0 -3px; padding:0 3px}
+  .body::-webkit-scrollbar{width:0; height:0}
+  .page{display:none}
+  .page.on{display:block}
+  /* ---------- 触摸预览 ---------- */
+  .pad{
+    position:relative; width:272px; height:272px; margin:2px auto 0; border-radius:16px; overflow:hidden;
+    background:linear-gradient(180deg,#fbfbfc,#f0f1f4); border:1px solid var(--line);
+  }
+  .pad canvas{position:absolute; inset:0; width:100%; height:100%}
+  .pad .hint{position:absolute; left:0; right:0; bottom:9px; text-align:center; font-size:11px; color:var(--muted)}
+  .chips{display:flex; gap:6px; justify-content:center; margin-top:10px; flex-wrap:wrap}
+  .chip{font-size:11px; color:var(--muted); background:#f7f8fa; border:1px solid var(--line); border-radius:7px; padding:3px 8px}
+  /* ---------- 卡片 ---------- */
+  .card{background:var(--card); border-radius:13px; padding:2px 12px; margin-bottom:10px; box-shadow:0 1px 2px rgba(16,24,40,.04)}
+  .row{display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px solid var(--line); gap:10px}
+  .row:last-child{border-bottom:0}
+  .row.col{display:block}
+  .row.col .rhead{display:flex; align-items:center; justify-content:space-between; gap:10px}
+  /* 视觉上是一条 4px 细线，但可点击高度给到 22px —— 不然鼠标根本点不中 */
+  .row.col input[type=range]{
+    width:100%; margin:6px 0 0; display:block; height:22px; border-radius:2px;
+    background-color:transparent;
+    background-image:linear-gradient(to right, #e2e6ec 0%, #e2e6ec 100%);
+    background-size:100% 4px; background-position:center; background-repeat:no-repeat;
+  }
+  .row.col input[type=range].off{opacity:.6}       /* 关着的时候仍可见，直接拖就会自动打开 */
+  .scale{
+    display:flex; justify-content:space-between; font-size:10px; color:var(--muted);
+    margin-top:5px; user-select:none; -webkit-user-select:none;   /* 拖滑块时别把刻度文字选中 */
+  }
+  .row.col input[type=range]{cursor:pointer}
+  .caleRow{display:flex; align-items:center; gap:8px; margin-top:9px}
+  .mini{
+    font:500 11px -apple-system,"PingFang SC",sans-serif; color:var(--accent);
+    background:#fff2e8; border:1px solid #ffd7b0; border-radius:7px;
+    padding:4px 10px; cursor:pointer; transition:.12s; white-space:nowrap;
+  }
+  .mini:active{transform:scale(.97)}
+  .mini:disabled{opacity:.5; cursor:default}
+  .calHint{font-size:10.5px; color:var(--muted); line-height:1.35}
+  .lab{font-size:12.5px}
+  .sub{font-size:11px; color:var(--muted); margin-top:1px}
+  .tip{font-size:11px; color:var(--muted); padding:0 4px 2px; line-height:1.5}
+  /* ---------- 开关 / 滑杆 ---------- */
+  .switch{position:relative; width:40px; height:24px; border-radius:999px; background:#e3e6ea; transition:.18s; flex:none; cursor:pointer}
+  .switch::after{content:""; position:absolute; top:3px; left:3px; width:18px; height:18px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.18); transition:.18s}
+  .switch.on{background:var(--accent)}
+  .switch.on::after{left:19px}
+  input[type=range]{-webkit-appearance:none; width:118px; height:3px; border-radius:2px; background:#e9ecf0; outline:none; flex:none}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none; width:15px; height:15px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.22); border:1px solid #e6e9ee}
+  /* ---------- 键位 ---------- */
+  .ghead{font-size:10.5px; color:var(--muted); font-weight:600; letter-spacing:.4px; margin:6px 2px 0}
+  .krow{display:flex; align-items:center; justify-content:space-between; padding:2px 0; border-bottom:1px solid var(--line); gap:10px; transition:opacity .15s}
+  .krow:last-child{border-bottom:0}
+  .krow.dim{opacity:.4}
+  .klab{font-size:12.5px}
+  .kval{
+    font:500 11.5px -apple-system,"PingFang SC",sans-serif; color:var(--ink);
+    background:#f4f5f7; border:1px solid var(--line); border-radius:7px;
+    padding:3px 9px; min-width:112px; text-align:center; cursor:pointer; transition:.12s;
+  }
+  .kval:active{background:#e7eaee}
+  .krow.dim .kval{cursor:default}
+  input[type=text]{
+    font:12px -apple-system,"PingFang SC",sans-serif; color:var(--ink);
+    background:#f7f8fa; border:1px solid var(--line); border-radius:8px;
+    padding:5px 8px; width:176px; outline:none; -webkit-user-select:text; user-select:text;
+  }
+  input[type=text]:focus{border-color:#ffc9a3; background:#fff}
+  /* 万一在浏览器里打开（而不是菜单栏弹窗），别让它拉成一整屏 */
+  @media (min-width: 520px){
+    body{max-width:420px; margin:0 auto}
+  }
+  /* ---------- 底部 ---------- */
+  .foot{display:flex; align-items:center; gap:8px; margin-top:10px; flex:none}
+  .run{
+    flex:1; height:36px; border:0; border-radius:10px; cursor:pointer;
+    font:600 13px -apple-system,"PingFang SC",sans-serif; color:#fff; background:var(--accent);
+    box-shadow:0 4px 12px rgba(255,106,0,.22); transition:.15s;
+  }
+  .run:active{transform:translateY(1px)}
+  .run.stop{background:var(--soft); color:var(--ink); box-shadow:none}
+  .run:disabled{opacity:.6; cursor:default; transform:none}
+  .icon{
+    width:36px; height:36px; flex:none; border:1px solid var(--line); background:#fff;
+    border-radius:10px; cursor:pointer; font-size:14px; color:var(--muted); line-height:1;
+    transition:.15s;
+  }
+  .icon:active{background:var(--soft)}
+  .icon:disabled{opacity:.4; cursor:default}
+  .icon.spin{animation:sp .8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  /* ---------- 底部选择面板 ---------- */
+  .sheet{position:fixed; inset:0; z-index:50; display:none}
+  .sheet.show{display:block}
+  .scrim{position:absolute; inset:0; background:rgba(16,24,40,.2)}
+  .card2{
+    position:absolute; left:0; right:0; bottom:0; background:#fff;
+    border-radius:16px 16px 0 0; padding:12px 14px 16px;
+    box-shadow:0 -8px 28px rgba(16,24,40,.16); animation:up .16s ease-out;
+  }
+  @keyframes up{from{transform:translateY(20px); opacity:.5}}
+  .sheet-head{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px}
+  .sheet-head span{font-size:12.5px; font-weight:600}
+  .sheet-head button{
+    border:0; background:none; cursor:pointer; padding:2px 4px;
+    font:500 12px -apple-system,"PingFang SC",sans-serif; color:var(--accent);
+  }
+  .opts{display:grid; grid-template-columns:1fr 1fr; gap:6px}
+  .opt{
+    font:500 12px -apple-system,"PingFang SC",sans-serif; color:var(--ink);
+    background:#f4f5f7; border:1px solid transparent; border-radius:9px;
+    padding:9px 6px; cursor:pointer; text-align:center; transition:.12s;
+  }
+  .opt:active{transform:scale(.98)}
+  .opt.on{background:#fff2e8; border-color:#ffc9a3; color:#b44a00; font-weight:600}
+  .sin{grid-column:1 / -1; display:flex; align-items:center; gap:8px; margin-top:4px;
+       padding-top:9px; border-top:1px solid var(--line)}
+  .sin span{font-size:11.5px; color:var(--muted); white-space:nowrap}
+  .sin input{flex:1; width:auto}
+</style>
+</head>
+<body>
+  <div class="head">
+    <div class="title">Siri Remote</div>
+    <div class="state"><span class="dot" id="dot"></span><span id="st">检测中…</span></div>
+  </div>
+
+  <div class="banner" id="permBanner">
+    <span>缺少辅助功能权限，按键不会生效</span>
+    <a href="x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility">去授权</a>
+  </div>
+
+  <div class="tabs">
+    <div class="tab on" data-tab="touch">触摸</div>
+    <div class="tab" data-tab="mode">模式</div>
+    <div class="tab" data-tab="keys">键位</div>
+  </div>
+
+  <div class="bodywrap" id="bodywrap">
+    <div class="body" id="body">
+
+      <!-- ========== 触摸 ========== -->
+      <div class="page on" data-page="touch">
+        <div class="pad">
+          <canvas id="pad"></canvas>
+          <div class="hint" id="hint">滑动试试</div>
+        </div>
+        <div class="chips">
+          <span class="chip" id="chipSize">面积 —</span>
+          <span class="chip" id="chipCols">集合 —</span>
+          <span class="chip" id="chipPid">主程序 —</span>
+        </div>
+      </div>
+
+      <!-- ========== 模式 ========== -->
+      <div class="page" data-page="mode">
+        <div class="card">
+          <div class="row">
+            <div><div class="lab">鼠标模式</div><div class="sub">滑动移动指针，不按方向键</div></div>
+            <div class="switch" id="swMouse"></div>
+          </div>
+          <div class="row">
+            <div><div class="lab">指针速度</div><div class="sub">满行程约 <span id="speedPx">1400</span> px</div></div>
+            <input type="range" id="speed" min="0.4" max="1.6" step="0.05">
+          </div>
+          <div class="row">
+            <div><div class="lab">加速度</div><div class="sub">快滑时放大位移</div></div>
+            <div class="switch" id="swAccel"></div>
+          </div>
+          <div class="row">
+            <div><div class="lab">按下防飘</div><div class="sub">按压瞬间把指针拉回落点</div></div>
+            <div class="switch" id="swSnap"></div>
+          </div>
+          <div class="row col">
+            <div class="rhead">
+              <div><div class="lab">手掌误触过滤</div><div class="sub">接触面积 &gt; <span id="palmVal">0.020</span> 就不响应</div></div>
+              <div class="switch" id="swPalm"></div>
+            </div>
+            <input type="range" id="palmSize" min="0.05" max="4" step="0.05">
+            <div class="scale"><span>0.05 指尖</span><span>4.0 整掌</span></div>
+            <div class="caleRow">
+              <button class="mini" id="palmCal">自动标定</button>
+              <span class="calHint" id="calHint">按平时的姿势滑几秒，自动定阈值</span>
+            </div>
+          </div>
+        </div>
+        <div class="tip">改动即时保存。主程序在运行时会自动重启一次让新配置生效。</div>
+      </div>
+
+      <!-- ========== 键位 ========== -->
+      <div class="page" data-page="keys">
+        <div class="card">
+          <div class="ghead">滑动 / 方向</div>
+          <div class="krow" data-key="up"><span class="klab">上</span><button class="kval" data-key="up"></button></div>
+          <div class="krow" data-key="down"><span class="klab">下</span><button class="kval" data-key="down"></button></div>
+          <div class="krow" data-key="left"><span class="klab">左</span><button class="kval" data-key="left"></button></div>
+          <div class="krow" data-key="right"><span class="klab">右</span><button class="kval" data-key="right"></button></div>
+        </div>
+
+        <div class="card">
+          <div class="ghead">按钮</div>
+          <div class="krow" data-key="click"><span class="klab">按下触摸板</span><button class="kval" data-key="click"></button></div>
+          <div class="krow" data-key="menu"><span class="klab">Menu</span><button class="kval" data-key="menu"></button></div>
+          <div class="krow" data-key="tv"><span class="klab">TV</span><button class="kval" data-key="tv"></button></div>
+          <div class="krow" data-key="playpause"><span class="klab">播放 / 暂停</span><button class="kval" data-key="playpause"></button></div>
+          <div class="krow" data-key="volup"><span class="klab">音量 +</span><button class="kval" data-key="volup"></button></div>
+          <div class="krow" data-key="voldown"><span class="klab">音量 −</span><button class="kval" data-key="voldown"></button></div>
+          <div class="krow" id="siriRow">
+            <span class="klab">麦克风键</span>
+            <button class="kval" id="siriVal"></button>
+          </div>
+        </div>
+        <div class="tip">鼠标模式下：按下触摸板 = 左键，Menu = 右键。</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="foot">
+    <button class="run" id="runBtn">启动</button>
+    <button class="icon" id="restartBtn" title="重启主程序">↻</button>
+  </div>
+
+  <div class="sheet" id="sheet">
+    <div class="scrim" id="scrim"></div>
+    <div class="card2">
+      <div class="sheet-head"><span id="sheetTitle">选择</span><button id="sheetClose">取消</button></div>
+      <div class="opts" id="sheetBody"></div>
+    </div>
+  </div>
+
+<script>
+const SPAN = 1650;
+const el = id => document.getElementById(id);
+
+// 与 siriremote.py 的 DEFAULT 保持一致：配置缺项时按它显示
+const DEFAULT_KM = {
+  up:"up", down:"down", left:"left", right:"right", click:"return",
+  menu:"escape", tv:"apps:ChatGPT,WorkBuddy,Claude", playpause:"return",
+  volup:"pageup", voldown:"pagedown", siri:null
+};
+const KEY_TITLE = {
+  up:"滑动 上", down:"滑动 下", left:"滑动 左", right:"滑动 右",
+  click:"按下触摸板", menu:"Menu", tv:"TV",
+  playpause:"播放 / 暂停", volup:"音量 +", voldown:"音量 −"
+};
+const CHOICES = [
+  ["up","方向键 ↑"], ["down","方向键 ↓"], ["left","方向键 ←"], ["right","方向键 →"],
+  ["return","回车"], ["escape","Esc"], ["home","Home"], ["pageup","PageUp"],
+  ["pagedown","PageDown"], ["space","空格"], ["tab","Tab"], ["off","不响应"]
+];
+const LABEL_OF = Object.fromEntries(CHOICES);
+LABEL_OF["apps"] = "轮换 App";
+
+const SIRI_CHOICES = [
+  ["voice","按住说话 → 出文字"],
+  ["hold-option","按住 Option"], ["cmd-d","按一下 ⌘D"], ["double-option","双击 Option"],
+  ["hold-control","按住 Control"], ["hold-fn","按住 Fn"], ["off","不响应"]
+];
+const SIRI_LABEL = Object.fromEntries(SIRI_CHOICES);
+
+let cfg = {}, running = false, busy = false, restarting = false;
+
+/* ---------------- 状态 ---------------- */
+function paintButton(){
+  const b = el("runBtn");
+  if (restarting){ b.textContent = "应用中…"; b.disabled = true; b.classList.add("stop"); return; }
+  b.textContent = busy ? "处理中…" : (running ? "停止" : "启动");
+  b.classList.toggle("stop", running);
+  b.disabled = busy;
+  el("restartBtn").disabled = !running || busy;
+}
+
+async function status(){
+  try{
+    const s = await fetchJSON("/api/status", null, 2500);
+    running = !!s.running;
+    el("permBanner").classList.toggle("show", s.main_trusted === false);
+    const dot = el("dot");
+    dot.className = "dot";
+    if (s.running){ dot.classList.add("ok"); el("st").textContent = "已接管"; }
+    else if (s.present){ dot.classList.add("warn"); el("st").textContent = "待启动"; }
+    else { el("st").textContent = "休眠"; }
+    el("chipCols").textContent = "集合 " + (s.collections || 0);
+    el("chipPid").textContent = s.running ? "主程序 " + s.pid : "主程序未运行";
+    paintButton();
+  }catch(e){}
+}
+
+/* ---------------- 配置 ---------------- */
+function paintMode(){
+  el("swMouse").classList.toggle("on", !!cfg.mouse);
+  el("swAccel").classList.toggle("on", !!cfg.accel);
+  el("swSnap").classList.toggle("on", cfg.snap !== false);
+  el("swPalm").classList.toggle("on", cfg.palm_guard !== false);
+  el("speed").value = cfg.speed || 0.85;
+  el("speedPx").textContent = Math.round((cfg.speed || 0.85) * SPAN / 50) * 50;
+  const ps = (cfg.palm_size != null ? Number(cfg.palm_size) : 0.02);
+  paintPalmTrack(ps);
+  el("palmSize").value = ps;
+  el("palmVal").textContent = ps.toFixed(2);
+  el("palmSize").classList.toggle("off", cfg.palm_guard === false);
+}
+
+function keyLabel(v){
+  if (v === null || v === undefined) return "不响应";
+  if (typeof v === "string" && v.startsWith("apps:")) return "轮换 App";
+  if (typeof v === "string" && v.startsWith("sys:")) return "系统键 " + v.slice(4);
+  return LABEL_OF[v] || String(v);
+}
+
+function paintKeys(){
+  const km = Object.assign({}, DEFAULT_KM, cfg.keymap || {});
+  const mouse = !!cfg.mouse;
+  for (const name of Object.keys(KEY_TITLE)){
+    const btn = document.querySelector('.kval[data-key="' + name + '"]');
+    const row = document.querySelector('.krow[data-key="' + name + '"]');
+    if (!btn || !row) continue;
+    let text = keyLabel(km[name]);
+    let dim = false;
+    if (mouse){
+      if (name === "click") text = "左键";
+      else if (name === "menu") text = "右键";
+      else if (name === "up" || name === "down" || name === "left" || name === "right"){
+        text = "鼠标模式不用"; dim = true;
+      }
+    }
+    btn.textContent = text;
+    row.classList.toggle("dim", dim);
+  }
+  // TV 轮换 App 输入框：只有 tv 设成 apps: 时才显示
+  el("siriVal").textContent = SIRI_LABEL[cfg.siri_action] || cfg.siri_action || "按住 Option";
+  updScroll();
+}
+
+function paint(){ paintMode(); paintKeys(); }
+
+async function load(){
+  try{ cfg = await fetchJSON("/api/config"); }catch(e){ cfg = {}; }
+  paint();
+}
+
+let saveTimer = null;
+function applyConfig(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try{ await fetchJSON("/api/config", {method:"POST", body: JSON.stringify(cfg)}, 2500); }catch(e){}
+    if (running) queueRestart();
+  }, 300);
+}
+
+/* ---------------- 自动重启 ---------------- */
+let rtTimer = null;
+function queueRestart(){
+  clearTimeout(rtTimer);
+  rtTimer = setTimeout(restartNow, 600);
+}
+
+async function restartNow(){
+  if (!running || restarting) return;
+  restarting = true; paintButton();
+  try{
+    await fetchJSON("/api/stop", {method:"POST"}, 6000);
+    await fetchJSON("/api/run", {method:"POST"}, 8000);
+  }catch(e){}
+  restarting = false;
+  await status();
+}
+
+el("restartBtn").onclick = async () => {
+  const ic = el("restartBtn");
+  ic.classList.add("spin");
+  clearTimeout(rtTimer);
+  if (!running){
+    busy = true; paintButton();
+    try{ await fetchJSON("/api/run", {method:"POST"}, 8000); }catch(e){}
+    busy = false;
+  } else {
+    await restartNow();
+  }
+  ic.classList.remove("spin");
+  await status();
+};
+
+/* ---------------- 开关 ---------------- */
+function bindSwitch(id, key, invert){
+  el(id).onclick = () => {
+    const on = el(id).classList.contains("on");
+    const next = !on;
+    el(id).classList.toggle("on", next);
+    cfg[key] = invert ? !next : next;
+    if (key === "mouse" || key === "speed") paintKeys();
+    if (key === "palm_guard") paintMode();      // 关掉时把阈值滑块置灰
+    applyConfig();
+  };
+}
+bindSwitch("swMouse", "mouse");
+bindSwitch("swAccel", "accel");
+bindSwitch("swSnap", "snap", true);
+bindSwitch("swPalm", "palm_guard");
+
+let calBusy = false;
+el("palmCal").onclick = async () => {
+  if (calBusy) return;
+  const btn = el("palmCal"), hint = el("calHint");
+  calBusy = true; btn.disabled = true;
+  let left = 6;
+  hint.textContent = "滑动中… " + left + "s";
+  const timer = setInterval(() => {
+    left -= 1;
+    if (left > 0) hint.textContent = "滑动中… " + left + "s";
+  }, 1000);
+  setTimeout(async () => {
+    clearInterval(timer);
+    try{
+      const r = await fetchJSON("/api/palm_calibrate?s=6", null, 9000);
+      if (!r.ok){
+        hint.textContent = r.error || "标定失败";
+      } else {
+        cfg.palm_size = r.suggest;
+        cfg.palm_guard = true;
+        paintMode();
+        applyConfig();
+        hint.textContent = "已设为 " + r.suggest.toFixed(3) +
+          "（你最大 " + r.max.toFixed(3) + "，共 " + r.frames + " 帧）";
+      }
+    }catch(e){
+      hint.textContent = "标定失败：本地服务没响应";
+    }
+    calBusy = false; btn.disabled = false;
+  }, 6000);
+};
+
+function paintPalmTrack(v){
+  const r = el("palmSize");
+  const min = parseFloat(r.min), max = parseFloat(r.max);
+  const p = Math.max(0, Math.min(100, (v - min) / (max - min) * 100));
+  r.style.backgroundImage = "linear-gradient(to right, var(--accent) 0%, var(--accent) " +
+    p + "%, #e2e6ec " + p + "%, #e2e6ec 100%)";
+}
+
+el("palmSize").oninput = e => {
+  const v = Math.round(parseFloat(e.target.value) * 100) / 100;
+  cfg.palm_size = v;
+  el("palmVal").textContent = v.toFixed(2);
+  paintPalmTrack(v);
+  if (cfg.palm_guard === false){        // 拖了就是想用，顺手把开关打开
+    cfg.palm_guard = true;
+    el("swPalm").classList.add("on");
+    el("palmSize").classList.remove("off");
+  }
+};
+el("palmSize").onchange = () => applyConfig();
+
+el("speed").oninput = e => {
+  cfg.speed = parseFloat(e.target.value);
+  el("speedPx").textContent = Math.round(cfg.speed * SPAN / 50) * 50;
+};
+el("speed").onchange = () => applyConfig();
+
+/* ---------------- 键位选择面板 ---------------- */
+function openSheet(title, options, current, onPick, extra){
+  el("sheetTitle").textContent = title;
+  const box = el("sheetBody");
+  box.innerHTML = "";
+  for (const [v, label] of options){
+    const b = document.createElement("div");
+    b.className = "opt" + (v === current ? " on" : "");
+    b.textContent = label;
+    b.onclick = () => { closeSheet(); onPick(v); };
+    box.appendChild(b);
+  }
+  if (extra){
+    // 跨两列的附加输入行（目前只有 TV 键用：轮换的 App 列表）
+    const wrap = document.createElement("div");
+    wrap.className = "sin";
+    const lab = document.createElement("span");
+    lab.textContent = extra.label || "";
+    const inp = document.createElement("input");
+    inp.type = "text";
+    inp.value = extra.value || "";
+    inp.placeholder = extra.placeholder || "";
+    inp.onchange = () => extra.onChange(inp.value);
+    wrap.appendChild(lab); wrap.appendChild(inp);
+    box.appendChild(wrap);
+  }
+  el("sheet").classList.add("show");
+}
+
+function closeSheet(){ el("sheet").classList.remove("show"); }
+
+el("sheetClose").onclick = closeSheet;
+el("scrim").onclick = closeSheet;
+
+document.querySelectorAll(".kval[data-key]").forEach(btn => {
+  btn.onclick = () => {
+    const name = btn.dataset.key;
+    const km = Object.assign({}, DEFAULT_KM, cfg.keymap || {});
+    const cur = km[name];
+    const isApps = typeof cur === "string" && cur.startsWith("apps:");
+    const val = (cur === null || cur === undefined) ? "off" : (isApps ? "apps" : cur);
+
+    let opts = CHOICES.slice();
+    if (name === "tv") opts = [["apps","轮换 App"]].concat(opts);
+
+    // TV 行额外带一个 App 列表输入框，省掉键位页里单独一行（那行会把麦克风键顶出可视区）
+    const extra = name === "tv" ? {
+      label: "App 列表",
+      value: (cfg.tv_apps && cfg.tv_apps.length ? cfg.tv_apps : ["ChatGPT","WorkBuddy","Claude"]).join(","),
+      placeholder: "ChatGPT,WorkBuddy,Claude",
+      onChange: v => setAppList(v)
+    } : null;
+
+    openSheet(KEY_TITLE[name] || name, opts, val, v => {
+      cfg.keymap = Object.assign({}, DEFAULT_KM, cfg.keymap || {});
+      if (v === "apps"){
+        let list = (cfg.tv_apps && cfg.tv_apps.length) ? cfg.tv_apps : ["ChatGPT","WorkBuddy","Claude"];
+        cfg.tv_apps = list;
+        cfg.keymap[name] = "apps:" + list.join(",");
+      } else if (v === "off"){
+        cfg.keymap[name] = null;
+      } else {
+        cfg.keymap[name] = v;
+      }
+      paintKeys();
+      applyConfig();
+    }, extra);
+  };
+});
+
+el("siriVal").onclick = () => {
+  openSheet("麦克风键", SIRI_CHOICES, cfg.siri_action || "hold-option", v => {
+    cfg.siri_action = v;
+    paintKeys();
+    applyConfig();
+  });
+};
+
+// 改「轮换的 App」列表：同步 cfg.tv_apps 与所有 apps: 形式的键位值
+function setAppList(raw){
+  const list = (raw || "").split(",").map(s => s.trim()).filter(Boolean);
+  if (!list.length) return;
+  cfg.tv_apps = list;
+  const km = Object.assign({}, DEFAULT_KM, cfg.keymap || {});
+  for (const k of Object.keys(km)){
+    if (typeof km[k] === "string" && km[k].startsWith("apps:")) km[k] = "apps:" + list.join(",");
+  }
+  cfg.keymap = km;
+  paintKeys();
+  applyConfig();
+}
+
+/* ---------------- 页签 ---------------- */
+function updScroll(){
+  const b = el("body");
+  el("bodywrap").classList.toggle("more", b.scrollHeight > b.clientHeight + 2);
+}
+
+document.querySelectorAll(".tab").forEach(t => {
+  t.onclick = () => {
+    document.querySelectorAll(".tab").forEach(x => x.classList.toggle("on", x === t));
+    const name = t.dataset.tab;
+    document.querySelectorAll(".page").forEach(p => p.classList.toggle("on", p.dataset.page === name));
+    if (name === "touch") sizeCanvas();
+    el("body").scrollTop = 0;
+    setTimeout(updScroll, 20);
+  };
+});
+
+/* ---------------- 触摸预览 ---------------- */
+const cvs = el("pad"), ctx = cvs.getContext("2d");
+let trail = [];
+
+function sizeCanvas(){
+  const r = cvs.getBoundingClientRect();
+  if (!r.width) return;
+  const dpr = window.devicePixelRatio || 1;
+  cvs.width = Math.round(r.width * dpr);
+  cvs.height = Math.round(r.height * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+
+function draw(){
+  const r = cvs.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  ctx.clearRect(0, 0, r.width, r.height);
+  if (!trail.length) return;
+  // 存的是归一化坐标，所以窗口尺寸变化后依然对得上
+  const pts = trail.map(p => ({x: p.nx * r.width, y: p.ny * r.height, down: p.down}));
+  ctx.lineWidth = 2; ctx.lineCap = "round";
+  for (let i = 1; i < pts.length; i++){
+    const a = pts[i - 1], b = pts[i];
+    ctx.strokeStyle = "rgba(255,106,0," + (0.04 + 0.34 * (i / pts.length)) + ")";
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+  const p = pts[pts.length - 1];
+  if (p.down){
+    ctx.beginPath(); ctx.fillStyle = "rgba(255,106,0,.16)";
+    ctx.arc(p.x, p.y, 20, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.fillStyle = "#ff6a00";
+    ctx.arc(p.x, p.y, 7, 0, Math.PI * 2); ctx.fill();
+  }
+}
+
+if (window.EventSource){
+  new EventSource("/events").onmessage = ev => {
+    try{
+      const e = JSON.parse(ev.data);
+      const nx = (e.x + SPAN / 2) / SPAN;
+      const ny = 1 - (e.y + SPAN / 2) / SPAN;
+      trail.push({nx, ny, down: !!e.down});
+      if (trail.length > 60) trail.shift();
+      el("hint").textContent = e.down
+        ? "x " + Math.round(e.x) + "   y " + Math.round(e.y)
+        : "滑动试试";
+      el("chipSize").textContent = "面积 " + (e.size != null ? e.size.toFixed(4) : "—");
+      draw();
+    }catch(err){}
+  };
+}
+
+/* ---------------- 启停 ---------------- */
+el("runBtn").onclick = async () => {
+  if (busy || restarting) return;
+  busy = true; paintButton();
+  try{
+    const j = await fetchJSON(running ? "/api/stop" : "/api/run", {method:"POST"}, 7000);
+    if (!j.ok) alert(j.error || "操作失败");
+  }catch(e){
+    alert(e.name === "AbortError" ? "本地服务没响应（超时），重启菜单栏程序试试" : "连不上本地服务");
+  }
+  busy = false;
+  await status();
+  if (running) setTimeout(status, 900);
+};
+
+async function fetchJSON(url, opts, ms){
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms || 4000);
+  try{
+    const r = await fetch(url, Object.assign({signal: ctl.signal}, opts || {}));
+    return await r.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+window.addEventListener("resize", () => { sizeCanvas(); updScroll(); });
+el("body").addEventListener("scroll", updScroll);
+
+load().then(() => { sizeCanvas(); updScroll(); });
+status(); setInterval(status, 3000);
+</script>
+</body>
+</html>

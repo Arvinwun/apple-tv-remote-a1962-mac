@@ -1,0 +1,21 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
+
+# 编译产物（用 mac/panel/build-app.sh 现场构建）
+SiriRemote.app/
+mac/panel/.build/
+
+# 本地录制与日志
+mac/captures/
+*.log
+
+# 备份文件
+*.bak
+
+# 工具数据（含个人使用记录，不属于源码）
+.workbuddy/

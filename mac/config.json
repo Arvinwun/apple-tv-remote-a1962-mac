@@ -1,0 +1,31 @@
+{
+  "mouse": true,
+  "speed": 0.7,
+  "accel": false,
+  "snap": false,
+  "flip_x": false,
+  "flip_y": false,
+  "siri_action": "voice",
+  "tv_apps": [
+    "ChatGPT",
+    "WorkBuddy",
+    "Claude"
+  ],
+  "keymap": {
+    "up": "up",
+    "down": "down",
+    "left": "left",
+    "right": "right",
+    "click": "return",
+    "menu": "escape",
+    "tv": "apps:ChatGPT,WorkBuddy,Claude",
+    "playpause": "return",
+    "volup": "pageup",
+    "voldown": "pagedown",
+    "siri": null
+  },
+  "palm_guard": true,
+  "palm_size": 2.8,
+  "voice_model": "base",
+  "debug": false
+}
