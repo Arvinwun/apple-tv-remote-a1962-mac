@@ -1,41 +1,41 @@
 # Siri Remote → Mac
 
-把初代 Siri Remote（A1513 / A1962）当成 Mac 的鼠标、键盘和语音输入设备。
+**English** | [简体中文](README.zh-CN.md)
 
-macOS 从 15 起移除了对初代遥控器的原生 HID 支持，官方没有任何可用入口。这个项目绕开系统驱动，
-直接读遥控器的按键报文和触摸栅格，再合成成标准的鼠标/键盘事件。
+Turn a first-generation Siri Remote (A1513 / A1962) into a mouse, keyboard and voice input device for macOS.
 
-基于 [open-appleremote](https://github.com/a-funk/open-appleremote) 的协议解码与手势引擎，
-只把「读设备」和「写事件」两层换成了 macOS 实现。
+Apple removed native HID support for the 1st-gen remote in macOS 15 and offers no replacement API. This project bypasses the system driver: it reads the remote's button reports and capacitive touch grid directly, then synthesizes standard mouse and keyboard events.
 
-## 能做什么
+Protocol decoding and gesture recognition come from [open-appleremote](https://github.com/a-funk/open-appleremote); only the *read device* and *write events* layers are macOS-specific.
 
-| 操作 | 默认行为 |
+## What it does
+
+| Action | Default behaviour |
 |---|---|
-| 手指在触摸板上滑动 | 移动鼠标指针（带按压防飘、屏幕边界钳制） |
-| 按下触摸板 | 左键单击，按住可拖拽 |
-| Menu | 右键 |
-| 播放/暂停 | Return |
-| TV | 在 ChatGPT → WorkBuddy → Claude 之间轮换 |
-| 音量 + / − | PageUp / PageDown |
-| 麦克风键 | 按住说话 → 本地转写 → 粘到光标处 |
+| Slide on the touch surface | Move the pointer (with click-drift correction and screen-edge clamping) |
+| Press the touch surface | Left click; hold and move to drag |
+| Menu | Right click |
+| Play/Pause | Return |
+| TV | Cycle between ChatGPT → WorkBuddy → Claude |
+| Volume + / − | PageUp / PageDown |
+| Microphone button | Hold to talk → local transcription → paste at cursor |
 
-全部可在菜单栏面板里改，改动即时生效。
+Everything is configurable from the menu bar panel, and changes apply immediately.
 
-## 技术要点
+## How it works
 
-这台遥控器在 macOS 上没有任何公开接口，每条通道都是逆向出来的：
+Nothing about this remote is documented on macOS. Every channel was reverse-engineered:
 
-| 层 | 情况 |
+| Layer | What we found |
 |---|---|
-| 按键 | macOS 把厂商报文 `0xFC` 重映射成 `0xFA`，只剩 2 字节位掩码（`click=0x80`、`menu=0x20`、`playpause=0x08`、`音量+=0x02`、`音量-=0x04`、`TV=0x01`、`Siri=0x10`） |
-| 触摸 | 被系统注册成 `AppleMultitouchDevice`，只能通过私有框架 `MultitouchSupport` 读；设备对象每次枚举都是新包装，且 `MTDeviceGetDeviceID` 会 SIGBUS |
-| 输出 | `CGEvent` 合成鼠标/键盘；音量在 macOS 26 上只认 `osascript`，系统定义键（NX_SYSDEFINED）已被封 |
-| 唤醒 | 按键走 BLE HID 能自己重连，触摸走私有回调**不会**，必须自己重挂 |
+| Buttons | macOS remaps the vendor report `0xFC` to `0xFA`, leaving a 2-byte bitmask (`click=0x80`, `menu=0x20`, `playpause=0x08`, `vol+=0x02`, `vol-=0x04`, `TV=0x01`, `Siri=0x10`) |
+| Touch | Exposed as an `AppleMultitouchDevice`; only readable through the private `MultitouchSupport` framework. Device objects are re-wrapped on every enumeration, and `MTDeviceGetDeviceID` triggers SIGBUS |
+| Output | `CGEvent` for mouse and keyboard. On macOS 26 the volume keys only respond to `osascript` — `NX_SYSDEFINED` events are silently dropped |
+| Wake | Buttons reconnect by themselves over BLE HID; the touch callback does **not**, and must be re-registered manually |
 
-细节和踩坑记录在 [`mac/README.md`](mac/README.md)，那份文档比这份长得多。
+The full reverse-engineering log (in Chinese, ~700 lines) lives in [`mac/README.md`](mac/README.md).
 
-## 快速开始
+## Getting started
 
 ```bash
 git clone --recursive https://github.com/Arvinwun/apple-tv-remote-a1962-mac.git
@@ -46,55 +46,56 @@ python3 -m venv .venv
     sounddevice numpy faster-whisper
 ```
 
-配对（无线必需）：
+Pairing (required for wireless use):
 
-1. Apple TV 断电，否则遥控器会连回电视
-2. 遥控器按住 **Menu + 音量+** 约 5 秒
-3. Mac：系统设置 → 蓝牙 → 选列表最下面那串十六进制地址
+1. Power off the Apple TV, otherwise the remote reconnects to it
+2. Hold **Menu + Volume Up** on the remote for ~5 seconds
+3. On the Mac: System Settings → Bluetooth → pick the hex address at the bottom of the list
 
-构建并启动菜单栏程序：
+Build and launch the menu bar app:
 
 ```bash
 ./mac/panel/build-app.sh
 open SiriRemote.app
 ```
 
-点菜单栏图标 → 「启动」。首次需要在 **系统设置 → 隐私与安全性 → 辅助功能** 里勾选 `SiriRemote.app`，
-否则合成的事件会被系统静默丢弃。
+Click the menu bar icon, then **启动** (Start). The first run requires granting
+**System Settings → Privacy & Security → Accessibility** to `SiriRemote.app`;
+without it macOS silently discards every synthesized event.
 
-命令行方式（不经 App）：
+Command line, without the app:
 
 ```bash
-.venv/bin/python mac/siriremote.py keys            # 键盘模式
-.venv/bin/python mac/siriremote.py keys --mouse    # 鼠标模式
-.venv/bin/python mac/siriremote.py scan            # 只检查是否识别到遥控器
+.venv/bin/python mac/siriremote.py keys            # keyboard mode
+.venv/bin/python mac/siriremote.py keys --mouse    # pointer mode
+.venv/bin/python mac/siriremote.py scan            # check whether the remote is detected
 ```
 
-## 已知限制
+## Known limitations
 
-- **遥控器自带麦克风拿不到。** 两次实测（无线/有线、独占通道、按住说话 10 秒），HID 层只给 2 字节状态位，零音频字节；GATT 直连也只暴露电池和设备信息服务。语音功能用的是 Mac 自己的麦克风。
-- **遥控器休眠后触摸层断电**，滑动唤不醒它，必须先按一下按钮。
-- **合盖使用内置麦克风是静音的**（硬件停用），语音功能需要开盖、iPhone 连续互通或外接麦。
-- 面积类传感器只有粗略分级，手掌误触过滤需要按个人手感标定。
+- **The remote's own microphone is unreachable.** Two independent tests (wireless and wired, exclusive HID access, 10 seconds of speech) returned only a 2-byte button state and zero audio bytes; connecting over GATT directly exposes only battery and device-information services. Voice input therefore uses the Mac's own microphone.
+- **The touch layer powers down when the remote sleeps** and sliding will not wake it — press any button first.
+- **The built-in microphone is muted while the lid is closed** (hardware disabled). Voice input needs the lid open, iPhone Continuity, or an external mic.
+- Capacitive area readings are coarse; palm rejection has to be calibrated per user.
 
-## 目录
+## Layout
 
 ```
 mac/
-  siriremote.py        主程序（scan / watch / keys）
-  live_mac.py          数据源：HID 按键 + MultitouchSupport 触摸
-  pointer.py           指针合成（绝对坐标累加、边界钳制、按压防飘）
-  voice.py             录音 → faster-whisper 转写 → 粘贴
-  config.json          配置（面板写入）
-  panel/               菜单栏 App（Swift + WKWebView）与本地 HTTP 服务
-  calibrate.py         方向标定
-  slide_probe.py       滑动诊断（只读，可与主程序同时运行）
-  mic_probe.py         麦克风通道验证
+  siriremote.py        main program (scan / watch / keys)
+  live_mac.py          data source: HID buttons + MultitouchSupport frames
+  pointer.py           pointer synthesis (absolute accumulation, edge clamp, drift correction)
+  voice.py             record → faster-whisper → paste
+  config.json          settings (written by the panel)
+  panel/               menu bar app (Swift + WKWebView) and local HTTP service
+  calibrate.py         direction calibration
+  slide_probe.py       read-only sliding diagnostics (runs alongside the main program)
+  mic_probe.py         microphone channel verification
 win/
-  probe_win.py         Windows 侧通道探测
-open-appleremote/      上游项目（submodule）
+  probe_win.py         Windows-side channel probe
+open-appleremote/      upstream project (submodule)
 ```
 
-## 许可
+## License
 
-MIT。上游 [open-appleremote](https://github.com/a-funk/open-appleremote) 同为 MIT。
+MIT. The upstream [open-appleremote](https://github.com/a-funk/open-appleremote) is also MIT.
